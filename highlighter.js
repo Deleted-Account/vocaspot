@@ -1,3 +1,21 @@
+// ---------------------------------------------------------------------------
+// CEFR level colour palette
+//
+// Each level gets a distinct hue so readers can visually distinguish difficulty
+// at a glance. `bg` is the background color, `text` is the font color, and
+// `line` is the underline color. `hover` applies a subtle background tint
+// on mouse-over to signal that the word is interactive.
+// ---------------------------------------------------------------------------
+
+const CEFR_COLORS = {
+  A1: { bg: '#DCFCE7', text: '#166534', line: '#4ADE80', hover: '#4ADE8028' }, // Mint Green
+  A2: { bg: '#E0F2FE', text: '#0369A1', line: '#38BDF8', hover: '#38BDF828' }, // Sky Blue
+  B1: { bg: '#E0E7FF', text: '#4338CA', line: '#6366F1', hover: '#6366F128' }, // Indigo
+  B2: { bg: '#FEF3C7', text: '#92400E', line: '#FBBF24', hover: '#FBBF2428' }, // Amber Yellow
+  C1: { bg: '#FFEDD5', text: '#9A3412', line: '#F97316', hover: '#F9731628' }, // Vivid Orange
+  C2: { bg: '#FCE7F3', text: '#9D174D', line: '#F472B6', hover: '#F472B628' }, // Rose Pink
+};
+
 function injectStyles(highlightStyle) {
   let style = document.getElementById('vs-styles');
   if (!style) {
@@ -6,28 +24,50 @@ function injectStyles(highlightStyle) {
     document.head.appendChild(style);
   }
 
-  let decoration, hover;
-  if (highlightStyle === 'bg-yellow') {
-    decoration = 'background-color: #FEF08A;';
-    hover = 'background-color: #FDE047;';
-  } else if (highlightStyle === 'underline-dotted') {
-    decoration = 'border-bottom: 2px dotted #F97316;';
-    hover = 'background-color: rgba(249, 115, 22, 0.1);';
-  } else {
-    decoration = 'border-bottom: 2px dashed #0D9488;';
-    hover = 'background-color: rgba(13, 148, 136, 0.1);';
-  }
-
-  style.textContent =
+  // Base rule — layout and cursor only, no colour.
+  // Colour is applied per-level via attribute selectors below so each CEFR
+  // level gets its own distinct shade regardless of the chosen highlight style.
+  let css =
     '.vs-highlight {\n' +
     '  display: inline;\n' +
-    '  ' + decoration + '\n' +
     '  cursor: pointer;\n' +
-    '  border-radius: 2px;\n' +
-    '}\n' +
-    '.vs-highlight:hover {\n' +
-    '  ' + hover + '\n' +
-    '}';
+    '  border-radius: 0;\n' + // Removed border radius
+    '}\n';
+
+  // Per-level rules using the [data-level] attribute written by highlightWords.
+  // For each level we emit both a resting state and a :hover state.
+  for (const [level, { bg, text, line, hover }] of Object.entries(CEFR_COLORS)) {
+    const selector = `.vs-highlight[data-level="${level}"]`;
+
+    let decoration, hoverDecoration;
+    if (highlightStyle === 'bg-yellow') {
+      // Solid background style: uses padding to create a perfect sharp rectangle 
+      // (extending 3px left/right and 1px down), then perfectly offsets it with negative 
+      // margins so that its physical layout footprint remains exactly 0 to protect line reflows.
+      decoration = `background-color: ${bg}; color: ${text}; padding: 0 2px 1px 2px; margin: 0 -2px -1px -2px;`;
+      hoverDecoration = `background-color: ${line}40;`;
+    } else if (highlightStyle === 'underline-dotted') {
+      // Pure dotted underline: text color is NOT modified. 
+      // Uses native text-decoration to eliminate any block/box-model reflow layout impacts.
+      decoration = `text-decoration: underline dotted ${line}; text-decoration-thickness: 3px; text-underline-offset: 3px;`;
+      hoverDecoration = `background-color: ${hover};`;
+    } else {
+      // Default: pure dashed underline: text color is NOT modified.
+      // Uses native text-decoration to eliminate any block/box-model reflow layout impacts.
+      decoration = `text-decoration: underline dashed ${line}; text-decoration-thickness: 3px; text-underline-offset: 3px;`;
+      hoverDecoration = `background-color: ${hover};`;
+    }
+
+    css +=
+      `${selector} {\n` +
+      `  ${decoration}\n` +
+      `}\n` +
+      `${selector}:hover {\n` +
+      `  ${hoverDecoration}\n` +
+      `}\n`;
+  }
+
+  style.textContent = css;
 }
 
 /**
@@ -37,7 +77,11 @@ function injectStyles(highlightStyle) {
  * each splitText() call only affects the right-hand portion of the node —
  * leaving all lower offsets intact for subsequent iterations.
  *
+ * The span receives a data-level attribute (e.g. data-level="B2") which the
+ * CSS rules emitted by injectStyles() use to apply the correct level colour.
+ *
  * @param {Array<{word, lemma, cefrLevel, textNode, offset}>} wordList
+ * @param {string} highlightStyle  'underline-dashed' | 'underline-dotted' | 'bg-yellow'
  */
 function highlightWords(wordList, highlightStyle) {
   injectStyles(highlightStyle);
@@ -89,7 +133,7 @@ function highlightWords(wordList, highlightStyle) {
         span.className = 'vs-highlight';
         span.dataset.word = item.word;
         span.dataset.lemma = item.lemma;
-        span.dataset.level = item.cefrLevel;
+        span.dataset.level = item.cefrLevel; // drives the per-level CSS colour rule
 
         textNode.parentNode.insertBefore(span, wordNode);
         span.appendChild(wordNode);
